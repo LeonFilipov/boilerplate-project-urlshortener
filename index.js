@@ -3,35 +3,49 @@ const express = require('express');
 const cors = require('cors');
 const app = express();
 const bodyParser = require('body-parser');
+const dns = require('dns');
 
 // Basic Configuration
 const port = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(bodyParser.json());
+app.use(express.urlencoded({ extended: true }));
 app.use('/public', express.static(`${process.cwd()}/public`));
 
 app.get('/', function(req, res) {
   res.sendFile(process.cwd() + '/views/index.html');
 });
 
-const ERROR_RESPONSE = { 'error': 'invalid url' };
+const ERROR_RESPONSE = { error: 'invalid url' };
 const dataBase = new Map();
-const checkURL = /^http:\/\/([A-z])+.com$/;
+const checkURL = /^(http|https):\/\/$/;
 
 app.post('/api/shorturl', (req, res) => {
-  if (req.body.original_url && req.body.short_url) {
-    if (!checkURL.test(req.body.original_url) || dataBase.get(req.body.short_url)) {
-      res.send(ERROR_RESPONSE, "url");
-      return
-    }
-    dataBase.set(req.body.short_url, req.body.original_url);
-    res.status(200);
-    res.send();
-    return 
+  const originalUrl = req.body.url; // La URL enviada
+
+  if (!originalUrl) {
+    return res.json({ error: 'URL is required' });
   }
-  res.send(ERROR_RESPONSE);
-  return
+  
+  let hostname;
+  try {
+    const urlObject = new URL(originalUrl);
+    hostname = urlObject.hostname;
+    if (urlObject.protocol !== 'http:' && urlObject.protocol !== 'https:') {
+      return res.json(ERROR_RESPONSE);
+    }
+  } catch (error) {
+    return res.json(ERROR_RESPONSE);
+  }
+  dns.lookup(hostname, (err) => {
+    if (err) {
+      return res.json(ERROR_RESPONSE);
+    }
+
+    const id = dataBase.size;
+    dataBase.set(id.toString(), originalUrl);
+    res.json({ original_url: originalUrl, short_url: id });
+  });
 });
 
 app.get('/api/shorturl/:id', (req, res) => {
